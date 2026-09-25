@@ -16,24 +16,30 @@ For one invocation without saving the package in settings:
 pi -e git:github.com/yazdannl/pi-minimal-review-agent
 ```
 
-See [`README.md`](README.md) for package details, removal, and update commands.
+See [`README.md`](README.md) for package details, removal, and update commands. The package manifest loads `extensions/review.ts`; after an update, use `pi update --extensions` or reinstall the package, and remove any separately loaded copy to avoid duplicate registration.
 
 ## Configure the review model
 
-Configure `review_work.model` with the exact `provider/modelId` for the model you want the reviewer to use, and set `review_work.thinkingLevel` to `medium` or another thinking level supported by that model. The extension reads these keys through Pi's native `SettingsManager`, does not choose or rewrite the model, and stops with a configuration error if `review_work.model` is missing or the model is unavailable, or if `review_work.thinkingLevel` is invalid or unsupported.
+Configure `review_work.models` with exact `provider/modelId` strings for the available tiers, and set `review_work.thinkingLevel` separately. The extension reads these keys through Pi's native `SettingsManager`.
 
 Set this in the user-level Pi settings file (`~/.pi/agent/settings.json`) by merging the following JSON into your existing settings:
 
 ```json
 {
   "review_work": {
-    "model": "provider/modelId",
+    "models": {
+      "high": "github-copilot/claude-opus-5.5",
+      "medium": "github-copilot/gpt-6-sol",
+      "low": "github-copilot/gpt-6-luna"
+    },
     "thinkingLevel": "medium"
   }
 }
 ```
 
-The `model` value must be a registered and authenticated model available in this Pi installation. `thinkingLevel` must be one of Pi's supported thinking levels: `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, or `"max"`.
+The `review_work` tool's optional `modelTier` parameter accepts `high`, `medium`, or `low`; it defaults to `medium` and chooses the matching entry from `review_work.models`. Results report both the selected tier and concrete model. If `models` exists but does not contain the requested tier, the tool fails clearly instead of choosing another model. For compatibility, settings containing only the legacy `review_work.model` use that one model for any selected tier; migrate to `models` to configure distinct tiers.
+
+The selected model must be registered and authenticated in this Pi installation. `thinkingLevel` defaults to `medium` and must be supported by the selected model; supported levels are `"off"`, `"minimal"`, `"low"`, `"medium"`, `"high"`, `"xhigh"`, and `"max"`. Reviewer sessions do not load provider extensions. After installing updates to this package, use `pi update --extensions` or reinstall it; remove any separately loaded copy of `review.ts` to avoid duplicate registration.
 
 ## Session history and cost
 

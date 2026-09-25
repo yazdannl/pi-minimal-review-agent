@@ -3,6 +3,9 @@
   "version": "1.0.0",
   "description": "Pi Minimal Review agent: independent critique-only reviews for Pi.",
   "keywords": ["pi-package"],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
   "peerDependencies": {
     "@earendil-works/pi-ai": "*",
     "@earendil-works/pi-coding-agent": "*",

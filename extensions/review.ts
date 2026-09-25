@@ -2,6 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { getSupportedThinkingLevels, Type, type ModelThinkingLevel, type Usage } from "@earendil-works/pi-ai";
+import { getReviewModelSelection, REVIEW_MODEL_TIERS, type ReviewModelTier } from "./review-internal/model-selection.ts";
 import {
   createAgentSession,
   DefaultResourceLoader,
@@ -18,8 +19,6 @@ const MAX_FILES = 20;
 const MAX_REVIEW_BYTES = 256 * 1024;
 const MAX_SCOPE_CHARS = 40_000;
 const MAX_RUNTIME_MS = 180_000;
-const SETTINGS_HINT = 'Set "review_work": { "model": "provider/modelId" } in your Pi user settings (normally ~/.pi/agent/settings.json), using a model available in this Pi installation.';
-
 const REVIEW_THINKING_LEVELS = ["off", "minimal", "low", "medium", "high", "xhigh", "max"] as const;
 const REVIEW_THINKING_LEVEL_SET = new Set<ModelThinkingLevel>(REVIEW_THINKING_LEVELS);
 
@@ -61,24 +60,6 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-export function getReviewModelSetting(settings: unknown): { provider: string; modelId: string } {
-  const section = isRecord(settings) ? settings.review_work : undefined;
-  const value = isRecord(section) ? section.model : undefined;
-  if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`The review_work.model setting is not configured. ${SETTINGS_HINT} See review.md in the package source for setup details.`);
-  }
-  if (value !== value.trim()) {
-    throw new Error(`Invalid review_work.model value. Use the exact provider/modelId form. ${SETTINGS_HINT}`);
-  }
-  const slash = value.indexOf("/");
-  const provider = slash > 0 ? value.slice(0, slash) : "";
-  const modelId = slash > 0 ? value.slice(slash + 1) : "";
-  if (!provider || !modelId || /[\s\u0000-\u001f]/.test(provider) || /[\s\u0000-\u001f]/.test(modelId)) {
-    throw new Error(`Invalid review_work.model value ${JSON.stringify(value)}. Use the exact provider/modelId form. ${SETTINGS_HINT}`);
-  }
-  return { provider, modelId };
-}
-
 export function getReviewThinkingLevelSetting(settings: unknown): ModelThinkingLevel {
   const section = isRecord(settings) ? settings.review_work : undefined;
   const value = isRecord(section) ? section.thinkingLevel : undefined;
@@ -103,14 +84,15 @@ export function resolveReviewThinkingLevel<T extends Parameters<typeof getSuppor
 
 export function resolveReviewModel<T>(
   settings: unknown,
+  tier: ReviewModelTier,
   findModel: (provider: string, modelId: string) => T | undefined,
-): T {
-  const { provider, modelId } = getReviewModelSetting(settings);
-  const model = findModel(provider, modelId);
+): { tier: ReviewModelTier; model: T } {
+  const selection = getReviewModelSelection(settings, tier);
+  const model = findModel(selection.provider, selection.modelId);
   if (!model) {
-    throw new Error(`Review model "${provider}/${modelId}" is not available in the isolated reviewer runtime. Check the provider/model ID and confirm it is registered by Pi itself; reviewer sessions do not load provider extensions.`);
+    throw new Error(`Review model "${selection.provider}/${selection.modelId}" for tier "${tier}" is not available in the isolated reviewer runtime. Check the provider/model ID and confirm it is registered by Pi itself; reviewer sessions do not load provider extensions.`);
   }
-  return model;
+  return { tier: selection.tier, model };
 }
 
 export function formatCostReport(cost: number | undefined): string {
@@ -298,7 +280,7 @@ export default function (pi: ExtensionAPI) {
     name: "review_work",
     label: "Independent review",
     description: [
-      "Run one independent, critique-only review in a separate persistent Pi session using the model selected by the review_work.model setting in ~/.pi/agent/settings.json. Review proposed plans and proposals as well as implementation results.",
+      "Run one independent, critique-only review in a separate persistent Pi session using the selected high, medium, or low model tier from review_work.models in ~/.pi/agent/settings.json (default: medium). Review proposed plans and proposals as well as implementation results.",
       "Use only after the user explicitly requests a review or confirms an offer; never run automatically when work is completed.",
       "The reviewer cannot use tools, extensions, context files, skills, or prompt templates and must not edit files, run commands, or start implementation work.",
       "The reviewer handles proposed plans, architecture and design notes, and implementation results, not just code; a substantive plan can be reviewed from the scope/brief alone with no files, so files remains optional.",
@@ -310,10 +292,12 @@ export default function (pi: ExtensionAPI) {
     promptGuidelines: [
       "Call only when the user explicitly asks for an independent review or confirms your offer; never start one automatically after completing work.",
       "Do not retry a failed review unless the user explicitly requests another attempt.",
+      "Use modelTier to honor an explicit user cost/quality preference; otherwise omit it to use the medium tier.",
     ],
     parameters: Type.Object({
       scope: Type.String({ description: "Self-contained, concise review brief and context. Do not include secrets or credentials.", minLength: 1, maxLength: MAX_SCOPE_CHARS }),
       files: Type.Optional(Type.Array(Type.String({ description: "Relevant non-secret file path, relative to the project, absolute, or ~/... ." }), { maxItems: MAX_FILES })),
+      modelTier: Type.Optional(Type.Union(REVIEW_MODEL_TIERS.map((tier) => Type.Literal(tier)), { description: "Review cost tier; selects review_work.models[modelTier]. Defaults to medium." })),
 
     }),
     executionMode: "sequential",
@@ -329,7 +313,8 @@ export default function (pi: ExtensionAPI) {
       const settingsManager = SettingsManager.create(ctx.cwd, agentDir);
       const modelSettings = settingsManager.getGlobalSettings();
       const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false });
-      const model = resolveReviewModel(modelSettings, (provider, modelId) => modelRuntime.getModel(provider, modelId));
+      const modelTier = params.modelTier ?? "medium";
+      const { tier: selectedTier, model } = resolveReviewModel(modelSettings, modelTier, (provider, modelId) => modelRuntime.getModel(provider, modelId));
       const reviewThinkingLevel = resolveReviewThinkingLevel(modelSettings, model);
       if (!modelRuntime.hasConfiguredAuth(model.provider)) {
         throw new Error(`No Pi authentication is configured for review model provider "${model.provider}". Configure its normal Pi authentication and retry.`);
@@ -393,7 +378,7 @@ export default function (pi: ExtensionAPI) {
 
       const costReport = formatCostReport(stats.cost);
       const resultText = [
-        `${status} — ${model.provider}/${model.id} (thinking ${reviewThinkingLevel})`,
+        `${status} — tier ${selectedTier}: ${model.provider}/${model.id} (thinking ${reviewThinkingLevel})`,
         formatUsage(stats),
         costReport,
         `Review session: ${session.sessionId}${session.sessionFile ? ` (${session.sessionFile})` : ""}. Resume it from Pi's session picker.`,
@@ -404,7 +389,7 @@ export default function (pi: ExtensionAPI) {
       ].join("\n");
       return {
         content: [{ type: "text", text: resultText }],
-        details: { status, model: `${model.provider}/${model.id}`, thinkingLevel: reviewThinkingLevel, files: files.map((file) => file.path), stopReason, sessionId: session.sessionId, sessionFile: session.sessionFile, usage: stats, costReport },
+        details: { status, modelTier: selectedTier, model: `${model.provider}/${model.id}`, thinkingLevel: reviewThinkingLevel, files: files.map((file) => file.path), stopReason, sessionId: session.sessionId, sessionFile: session.sessionFile, usage: stats, costReport },
         usage: toolUsage(stats),
         isError: incomplete,
       };

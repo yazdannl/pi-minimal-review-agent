@@ -20,7 +20,7 @@ To install in the current project's settings instead, add `-l` to `pi install`; 
 
 If you already load `review.ts` directly from `~/.pi/agent/extensions/`, remove that duplicate registration before installing this package.
 
-The package manifest loads `extensions/review.ts`. The companion [`review.md`](review.md) has additional setup and usage details. Pi provides the extension's imported runtime packages.
+The package manifest loads `extensions/review.ts`. The companion [`review.md`](review.md) has additional setup and usage details. Pi provides the extension's imported runtime packages. After installing a package update, use `pi update --extensions` (or reinstall the package); remove any separately loaded copy of `review.ts` to avoid duplicate registration.
 
 ## Configure the reviewer model
 
@@ -29,13 +29,19 @@ Merge this into the user-level Pi settings file (`~/.pi/agent/settings.json`), p
 ```json
 {
   "review_work": {
-    "model": "provider/modelId",
+    "models": {
+      "high": "github-copilot/claude-opus-5.5",
+      "medium": "github-copilot/gpt-6-sol",
+      "low": "github-copilot/gpt-6-luna"
+    },
     "thinkingLevel": "medium"
   }
 }
 ```
 
-Use the exact provider/model ID for a model available and authenticated in this Pi installation. `thinkingLevel` is optional and defaults to `medium`; it must be supported by the chosen model. Reviewer sessions do not load provider extensions, so the selected model must be registered by Pi itself.
+`review_work.models` maps the `high`, `medium`, and `low` tiers to exact `provider/modelId` strings. The `review_work` tool accepts optional `modelTier` (`high`, `medium`, or `low`) and selects the corresponding configured model; omitted `modelTier` defaults to `medium`. If the tier map is present but lacks the requested tier, the review fails with a configuration error. Existing settings with only `review_work.model` remain supported as a legacy single-model configuration for any requested tier; they can be migrated to the tier map above.
+
+`thinkingLevel` is separate from model tier, optional, and defaults to `medium`; it must be supported by the selected model. The selected model must be available and authenticated in this Pi installation. Reviewer sessions do not load provider extensions, so the model must be registered by Pi itself.
 
 ## Privacy and cost
 
