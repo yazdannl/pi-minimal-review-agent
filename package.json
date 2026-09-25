@@ -1,0 +1,14 @@
+{
+  "name": "pi-minimal-review-agent",
+  "version": "1.0.0",
+  "description": "Pi Minimal Review agent: independent critique-only reviews for Pi.",
+  "keywords": ["pi-package"],
+  "peerDependencies": {
+    "@earendil-works/pi-ai": "*",
+    "@earendil-works/pi-coding-agent": "*",
+    "typebox": "*"
+  },
+  "pi": {
+    "extensions": ["./extensions/review.ts"]
+  }
+}

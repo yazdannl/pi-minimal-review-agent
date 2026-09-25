@@ -65,7 +65,7 @@ export function getReviewModelSetting(settings: unknown): { provider: string; mo
   const section = isRecord(settings) ? settings.review_work : undefined;
   const value = isRecord(section) ? section.model : undefined;
   if (typeof value !== "string" || !value.trim()) {
-    throw new Error(`The review_work.model setting is not configured. ${SETTINGS_HINT} See ~/.pi/agent/extensions/review.md.`);
+    throw new Error(`The review_work.model setting is not configured. ${SETTINGS_HINT} See review.md in the package source for setup details.`);
   }
   if (value !== value.trim()) {
     throw new Error(`Invalid review_work.model value. Use the exact provider/modelId form. ${SETTINGS_HINT}`);

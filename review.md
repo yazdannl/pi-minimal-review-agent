@@ -1,6 +1,22 @@
-# Independent review extension
+# Pi Minimal Review agent
 
-`review_work` runs one explicitly requested, critique-only review in a separate Pi `AgentSession`. The reviewer has no tools, extensions, context files, skills, themes, or prompt templates. Its behavioral instructions live in `review.ts`; do not rely on `AGENTS.md` for reviewer policy.
+`review_work` runs one explicitly requested, critique-only review in a separate Pi `AgentSession`. The package loads `extensions/review.ts`. The reviewer has no tools, extensions, context files, skills, themes, or prompt templates. Its behavioral instructions live in the extension source; do not rely on `AGENTS.md` for reviewer policy.
+
+## Install
+
+Install for your user (the default):
+
+```bash
+pi install git:github.com/yazdannl/pi-minimal-review-agent
+```
+
+For one invocation without saving the package in settings:
+
+```bash
+pi -e git:github.com/yazdannl/pi-minimal-review-agent
+```
+
+See [`README.md`](README.md) for package details, removal, and update commands.
 
 ## Configure the review model
 
