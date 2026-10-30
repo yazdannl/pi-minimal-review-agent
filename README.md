@@ -1,6 +1,6 @@
 # Pi Minimal Review agent
 
-A Pi package that registers the `review_work` tool for explicitly requested, independent, critique-only reviews in a separate persisted Pi session. It can review plans and design notes as well as implementation results. The reviewer has no tools, extensions, skills, project context files, themes, or prompt templates.
+A Pi package that registers the `review_work` tool for explicitly requested, independent, critique-only reviews in a separate persisted Pi session, plus `review_reply` for explicitly requested follow-ups to a review session. It can review plans and design notes as well as implementation results. The reviewer has no tools, extensions, skills, project context files, themes, or prompt templates.
 
 ## Install
 
@@ -48,3 +48,7 @@ Merge this into the user-level Pi settings file (`~/.pi/agent/settings.json`), p
 The reviewer receives the brief and only the optional files selected for that review. Selected files must be regular text files within the current project or `~/.pi/agent`; sensitive paths are rejected, and inputs are limited to 20 files and 256 KiB total. The brief and selected file contents are sent to the configured model provider and may incur cost, so do not include secrets or private data. Each review creates a normal persisted Pi session.
 
 Review the source before installing. Extensions execute in the Pi process with that process's operating-system permissions.
+
+## Reply to the reviewer
+
+`review_reply({ sessionId, message, files? })` continues an existing review session instead of starting a new one. Use it only when the user explicitly asks to answer the reviewer's questions, contest a finding, or ask for clarification; never automatically after a review. The `sessionId` is printed by `review_work` (a unique prefix is accepted) and must belong to a review session created by this extension. The reply keeps the session's recorded model and the reviewer's critique-only setup, and optional `files` reuse the same limits and path rules as `review_work`.

@@ -47,6 +47,20 @@ Each invocation creates a normal persisted Pi session in the standard session di
 
 Token and cost reporting comes from the completed Pi session's own statistics. No separate price table or fallback estimate is used; if Pi reports no non-zero session cost, the result says that USD cost is unavailable.
 
+## Reply to the reviewer
+
+`review_reply({ sessionId, message, files? })` continues an existing review session instead of starting a new one. The result of every `review_work` call prints the session id and the exact `review_reply` call. `sessionId` accepts the full id or a unique prefix and must identify a session created by `review_work` (matched by its `Independent review — ...` title or its initial review prompt); sessions the reviewer never owned are refused. The reply reuses the model recorded in the session (falling back to the configured `medium` tier only when the session has no recorded model), and the reviewer thinking level from `review_work.thinkingLevel`.
+
+Use it when the user asks to answer the reviewer's questions, contest a finding with evidence, or ask a clarification. Optional `files` attach updated or missing content under the same path, size, and secrecy rules as `review_work`; the reviewer still cannot read files by itself, so attach anything it needs to see. Each reply appends to the same persisted session, keeps its title and history, and reports the same token and cost metadata. Like `review_work`, never send a reply unless the user explicitly asks for one. Example:
+
+```
+review_reply({
+  sessionId: "8f3a1c22",
+  message: "Finding 2 is a false positive: normalizePath() already rejects traversal before the join on line 41. Please re-check that finding.",
+  files: ["src/paths.ts"]
+})
+```
+
 ## Reviewing plans
 
 The reviewer handles proposed plans, architecture and design notes as well as implementation results. When there is no code yet, put a substantive plan in the `scope` brief and omit `files` (it is optional); the reviewer evaluates goals and scope, assumptions, sequencing and dependencies, tradeoffs, omissions, risks, and validation and rollout as applicable, without demanding code or flagging planned-but-unimplemented work as a defect merely for being unimplemented.
