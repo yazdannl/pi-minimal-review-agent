@@ -39,9 +39,22 @@ Merge this into the user-level Pi settings file (`~/.pi/agent/settings.json`), p
 }
 ```
 
-`review_work.models` maps the `high`, `medium`, and `low` tiers to exact `provider/modelId` strings. The `review_work` tool accepts optional `modelTier` (`high`, `medium`, or `low`) and selects the corresponding configured model; omitted `modelTier` defaults to `medium`. If the tier map is present but lacks the requested tier, the review fails with a configuration error. Existing settings with only `review_work.model` remain supported as a legacy single-model configuration for any requested tier; they can be migrated to the tier map above.
+`review_work.models` maps the `high`, `medium`, and `low` tiers to exact `provider/modelId` strings, or to objects with a `model` string and an optional per-tier `thinkingLevel`. The `review_work` tool accepts optional `modelTier` (`high`, `medium`, or `low`) and selects the corresponding configured model; omitted `modelTier` defaults to `medium`. If the tier map is present but lacks the requested tier, the review fails with a configuration error. Existing settings with only `review_work.model` remain supported as a legacy single-model configuration for any requested tier; they can be migrated to the tier map above. For a tier that mixes in a different model family, prefer the object form:
 
-`thinkingLevel` is separate from model tier, optional, and defaults to `medium`; it must be supported by the selected model. The selected model must be available and authenticated in this Pi installation. Reviewer sessions do not load provider extensions, so the model must be registered by Pi itself.
+```json
+{
+  "review_work": {
+    "models": {
+      "high": "github-copilot/claude-opus-5.5",
+      "medium": "github-copilot/gpt-6-sol",
+      "low": { "model": "opencode-go/deepseek-v4.1-flash", "thinkingLevel": "max" }
+    },
+    "thinkingLevel": "medium"
+  }
+}
+```
+
+`thinkingLevel` is separate from model tier, optional, and defaults to `medium`; it must be supported by the selected model. A tier object's own `thinkingLevel` overrides that default for that tier only, so tiers using different models can each pick a level their model supports; replies reuse the tier override of the session's recorded model. The selected model must be available and authenticated in this Pi installation. Reviewer sessions do not load provider extensions, so the model must be registered by Pi itself.
 
 ## Privacy and cost
 

@@ -2,7 +2,7 @@ import { lstat, readFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { getSupportedThinkingLevels, Type, type ModelThinkingLevel, type Usage } from "@earendil-works/pi-ai";
-import { getReviewModelSelection, REVIEW_MODEL_TIERS, type ReviewModelTier } from "./review-internal/model-selection.ts";
+import { findReviewModelSelection, getReviewModelSelection, REVIEW_MODEL_TIERS, type ReviewModelTier } from "./review-internal/model-selection.ts";
 import { buildReplyPrompt, REVIEW_PROMPT_MARKER, REVIEW_SESSION_NAME_PREFIX, selectReviewSession, type ReviewInputFile } from "./review-internal/reply.ts";
 import {
   createAgentSession,
@@ -69,8 +69,9 @@ export function getReviewThinkingLevelSetting(settings: unknown): ModelThinkingL
 export function resolveReviewThinkingLevel<T extends Parameters<typeof getSupportedThinkingLevels>[0]>(
   settings: unknown,
   model: T,
+  override?: string,
 ): ModelThinkingLevel {
-  const thinkingLevel = getReviewThinkingLevelSetting(settings);
+  const thinkingLevel = (override ?? getReviewThinkingLevelSetting(settings)) as ModelThinkingLevel;
   const supportedLevels = getSupportedThinkingLevels(model);
   if (!supportedLevels.includes(thinkingLevel)) {
     throw new Error(`Review thinking level ${JSON.stringify(thinkingLevel)} is not supported by review model "${model.provider}/${model.id}". Supported levels: ${supportedLevels.join(", ")}.`);
@@ -82,13 +83,13 @@ export function resolveReviewModel<T>(
   settings: unknown,
   tier: ReviewModelTier,
   findModel: (provider: string, modelId: string) => T | undefined,
-): { tier: ReviewModelTier; model: T } {
+): { tier: ReviewModelTier; thinkingLevel?: string; model: T } {
   const selection = getReviewModelSelection(settings, tier);
   const model = findModel(selection.provider, selection.modelId);
   if (!model) {
     throw new Error(`Review model "${selection.provider}/${selection.modelId}" for tier "${tier}" is not available in the isolated reviewer runtime. Check the provider/model ID and confirm it is registered by Pi itself; reviewer sessions do not load provider extensions.`);
   }
-  return { tier: selection.tier, model };
+  return { tier: selection.tier, thinkingLevel: selection.thinkingLevel, model };
 }
 
 export function formatCostReport(cost: number | undefined): string {
@@ -383,8 +384,8 @@ export default function (pi: ExtensionAPI) {
       const modelSettings = settingsManager.getGlobalSettings();
       const modelRuntime = await ModelRuntime.create({ allowModelNetwork: false });
       const modelTier = params.modelTier ?? "medium";
-      const { tier: selectedTier, model } = resolveReviewModel(modelSettings, modelTier, (provider, modelId) => modelRuntime.getModel(provider, modelId));
-      const reviewThinkingLevel = resolveReviewThinkingLevel(modelSettings, model);
+      const { tier: selectedTier, model, thinkingLevel: tierThinkingLevel } = resolveReviewModel(modelSettings, modelTier, (provider, modelId) => modelRuntime.getModel(provider, modelId));
+      const reviewThinkingLevel = resolveReviewThinkingLevel(modelSettings, model, tierThinkingLevel);
       if (!modelRuntime.hasConfiguredAuth(model.provider)) {
         throw new Error(`No Pi authentication is configured for review model provider "${model.provider}". Configure its normal Pi authentication and retry.`);
       }
@@ -473,7 +474,11 @@ export default function (pi: ExtensionAPI) {
       if (!modelRuntime.hasConfiguredAuth(model.provider)) {
         throw new Error(`No Pi authentication is configured for review model provider "${model.provider}". Configure its normal Pi authentication and retry.`);
       }
-      const reviewThinkingLevel = resolveReviewThinkingLevel(modelSettings, model);
+      const reviewThinkingLevel = resolveReviewThinkingLevel(
+        modelSettings,
+        model,
+        findReviewModelSelection(modelSettings, model.provider, model.id)?.thinkingLevel,
+      );
 
       const session = await createReviewerSession({
         cwd: ctx.cwd,
